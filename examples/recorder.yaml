@@ -1,0 +1,30 @@
+# Filename prefix; letters, digits, underscores and hyphens.
+project: camera_test
+# Output directory relative to this YAML; created on start.
+output_dir: ../recordings
+# Loopback TCP endpoints; profile path relative to this YAML.
+transport_config: transport.json
+# Exact topics to record; no wildcards.
+topics:
+  # SHM image notification topic.
+  - key: camera/front/image
+    # Copy validated SHM pixels and wrap them in Foxglove RawImage.
+    input: shm_image
+    # Width in pixels.
+    width: 640
+    # Height in pixels.
+    height: 480
+    # Byte channel order; rgb8 or bgr8.
+    encoding: rgb8
+    # Bytes per row, including any padding.
+    step: 1920
+    # Camera identity stored in each image.
+    frame_id: front_camera
+  # Standalone demo frame counter.
+  - key: camera/front/metadata
+    # JSON object validated against the schema.
+    input: json
+    # Schema path relative to this YAML.
+    schema: schemas/metadata.json
+    # Arrival timestamps; publisher mode requires timestamp_ns in payload.
+    timestamp_source: receive
