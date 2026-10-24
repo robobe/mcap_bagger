@@ -21,7 +21,7 @@ def listener(config):
     recorder = Recorder(on_error=lambda message: None)
     recorder.config = config
     now = [time.monotonic()]
-    service = ControlledRecorder(recorder, report=lambda message: None, clock=lambda: now[0])
+    service = ControlledRecorder(recorder, report=lambda message: None, clock=lambda: max(now[0], time.monotonic()))
     try:
         yield service, telemetry, commands, now
     finally:

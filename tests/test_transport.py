@@ -41,7 +41,13 @@ def test_real_transport_late_publisher_and_exact_topics(config):
     assert run.error is None
     with run.path.open('rb') as stream:
         messages = list(make_reader(stream).iter_messages())
-        assert len(messages) == 1
+        assert len(messages) == 2
+        metadata = next(json.loads(m.data) for _, c, m in messages if c.topic.endswith('/metadata'))
+        image = next(m for _, c, m in messages if not c.topic.endswith('/metadata'))
+        assert metadata['image_record_sequence'] == image.sequence
+        assert metadata['image_log_time_ns'] == image.log_time
+        assert metadata['metadata']['sequence'] == 2
+        messages = [(s, c, m) for s, c, m in messages if not c.topic.endswith('/metadata')]
         assert RawImage.FromString(messages[0][2].data).data == bytes(range(12))
 
 

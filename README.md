@@ -138,3 +138,69 @@ state ingestion and standalone event reception. Repeated terminal state does not
 reopen bags; joining an already completed episode does not create a new bag.
 Record `scenario/ended` in the profile to retain the full result. Queue/disk errors
 retain the existing incomplete-file behavior; confirmation does not hide them.
+
+## Flight analysis and source identity
+
+The standard workspace launcher enables this recorder automatically. MCAP is the
+flight-data source; per-process stdout/stderr logs remain available for startup,
+exceptions and storage failures. No duplicate live CSV stream is written.
+
+Every accepted SHM image queues pixels and original descriptor metadata together,
+including source stamps. The writer adds `<image topic>/metadata` using the shared
+`image_metadata.json` schema. `image_log_time_ns` and `image_record_sequence` link
+to the image's MCAP envelope, while `metadata.session`, `metadata.sequence`,
+`metadata.capture_ns` and `metadata.source` identify the original exposure.
+These sequence counters serve different purposes. Skipped SHM frames create
+neither an image nor an orphan metadata record. A partial write marks the entire
+recording incomplete. The metadata suffix is reserved for image inputs.
+
+Final `recording_health` MCAP metadata stores JSON-encoded fields conforming to
+`recording_health.json`: accepted/written counts, skipped images, queue peak,
+close outcome, authoritative episode identity, completeness and launch ID. Completeness describes recorder
+acceptance/writing, not lossless upstream transport; source gaps and publisher
+counters must also be inspected. Finalization failure can occur after this record
+is written, so `.partial` and process logs take precedence over its complete flag.
+
+The controlled service caches validated config/wind/spawn/renderer snapshots while
+stopped and seeds the next flight with them, preserving their original source
+identity/time. A snapshot may therefore refer to the preceding stopped episode;
+periodic live updates follow. Mission faults are retained as `mission_fault:<reason>`
+in the close outcome. Stop/Reset wait 250 ms for final app diagnostics, and terminal
+success retains the existing deduplicated event drain. Recording failure leaves
+`.mcap.partial`; disk failures are always reported to stderr.
+
+`--ready-file <path>` with `--config` writes a readiness marker after control and
+snapshot subscriptions are installed. It is removed on shutdown. This supports
+the standard launcher; it is not a guarantee of lossless pub/sub delivery.
+
+Offline analysis:
+
+```bash
+uv run --locked --all-packages --all-extras --all-groups python -m mcap_bagger.report \
+  ../bullet_render/recordings/<flight>.mcap --output /tmp/flight-analysis --csv
+```
+
+The report uses a ±2 s arrival-time window around the first clipped-target
+mission diagnostic, or the final sample if none exists. New recordings filter late foreign-episode samples by the recorded episode identity.
+Exact rejected-image
+matching uses processed stream/frame/capture-time/episode/physics identity; timestamps alone
+never select an exact frame. Up to five nearby frames are exported as PNG.
+Sensor errors compare available readings with actual physics truth within 20 ms
+of simulation time. Configurations at the rejection and missing-topic warnings
+are retained. Old indexed recordings remain readable. Recover/index unindexed
+partial files with MCAP tooling before reporting; never overwrite the original.
+
+| Recorded analysis data | Topic or MCAP record | Cadence |
+| --- | --- | --- |
+| Actual pose, motion, rotor speeds | `analysis/physics/ground_truth` | 100 Hz |
+| Available IMU/barometer outputs and estimated attitude | `analysis/physics/sensors` | Physics sampling rate |
+| Effective settings and revisions | `analysis/physics/config`, `analysis/app/config` | 1 Hz, plus preflight cache |
+| Applied mean/gust wind | `simulation/wind_state` | 10 Hz |
+| Box, processed frame, edge margins, limits and decision | Existing bbox and mission topics | Detector/mission cadence |
+| Renderer drop counters and source age | `analysis/render/health` | 1 Hz |
+| Original image identity and MCAP association | `<image topic>/metadata` | One per accepted image |
+| Queue peak, counts, skips, outcome and completeness | `recording_health` metadata | Finalization |
+
+For a desktop overview, the sibling [FlightLens](../flight_lens/README.md) project
+opens the same indexed MCAP files directly, with linked plots, event summaries
+and exact event-frame previews. It does not modify recordings or flight settings.

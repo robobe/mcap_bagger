@@ -1,6 +1,7 @@
 """Command-aware recording, with physics state as the authority for opening files."""
 
 import time
+import json
 
 import zmq
 from bullet_msgs.scenario import END_TOPIC, TERMINAL_DRAIN_S, validate_end
@@ -37,6 +38,7 @@ class ControlledRecorder:
         self.last_heartbeat = None
         self.terminal_deadline = None
         self.awaiting_stop = False
+        self.cached_snapshots = {}
         self.context = zmq.Context()
         self.sockets = []
         self.poller = zmq.Poller()
@@ -54,9 +56,36 @@ class ControlledRecorder:
                     socket.setsockopt(zmq.SUBSCRIBE, topic)
                 socket.connect(recorder.config.transport[endpoint])
                 self.poller.register(socket, zmq.POLLIN)
+            self.snapshot_sockets = {}
+            snapshot_keys = {'analysis/physics/config', 'analysis/app/config', 'flight/drone_1/config', 'simulation/wind_state', 'simulation/spawn_state', 'analysis/render/health', 'app/drone_1/mission'}
+            by_endpoint = {}
+            for topic in recorder.config.topics:
+                if topic.key in snapshot_keys:
+                    endpoint = topic.endpoint or recorder.config.transport['telemetry_endpoint']
+                    by_endpoint.setdefault(endpoint, []).append(topic)
+            for endpoint, topics in by_endpoint.items():
+                socket = self.context.socket(zmq.SUB)
+                self.sockets.append(socket)
+                socket.setsockopt(zmq.LINGER, 0)
+                socket.setsockopt(zmq.RCVHWM, 16)
+                socket.setsockopt(zmq.MAXMSGSIZE, 256 * 1024)
+                for topic in topics:
+                    socket.setsockopt(zmq.SUBSCRIBE, topic.key.encode())
+                socket.connect(endpoint)
+                self.snapshot_sockets[socket] = {topic.key.encode(): topic for topic in topics}
+                self.poller.register(socket, zmq.POLLIN)
         except BaseException:
             self.close()
             raise
+
+    def _schedule_stop(self, reason, now):
+        if self.active_episode is not None:
+            if not self.recorder.recording.outcome.startswith("mission_fault:"):
+                self.recorder.recording.outcome = reason
+            if self.terminal_deadline is None:
+                self.terminal_deadline = now + TERMINAL_DRAIN_S
+        else:
+            self._stop()
 
     def _stop(self):
         self.terminal_deadline = None
@@ -92,7 +121,7 @@ class ControlledRecorder:
             if action in ("stop", "reset"):
                 # With no open episode, a queued running state may precede Stop.
                 self.awaiting_stop = self.active_episode is None
-                self._stop()
+                self._schedule_stop(action, now)
             else:
                 self.awaiting_stop = False
 
@@ -102,6 +131,7 @@ class ControlledRecorder:
         episode = (source['physics_id'], source['episode_id'])
         if self.active_episode != episode:
             return
+        self.recorder.recording.outcome = result["reason"] if "reason" in result else "target_hit"
         self.recorder.record_terminal(result)
         if self.terminal_deadline is None:
             self.terminal_deadline = now + TERMINAL_DRAIN_S
@@ -124,7 +154,7 @@ class ControlledRecorder:
             if value.get('terminal_result') is not None:
                 self._terminal(value['terminal_result'], now)
             if self.terminal_deadline is None:
-                self._stop()
+                self._schedule_stop(value['reason'], now)
         elif self.awaiting_stop:
             self.closed_episodes.add(episode)
         elif episode not in self.closed_episodes:
@@ -132,6 +162,12 @@ class ControlledRecorder:
             try:
                 self.report(self.recorder.start())
                 self.active_episode = episode
+                self.recorder.recording.episode = dict(physics_id=episode[0], episode_id=episode[1])
+                for topic, payload in self.cached_snapshots.values():
+                    value = json.loads(payload)
+                    physics_id = value.get('physics_id', value.get('source', {}).get('physics_id'))
+                    if physics_id == episode[0]:
+                        self.recorder.recording.receive(topic, payload)
             except Exception as exc:
                 self.report(f"Recording failed: {exc}; waiting for the next episode")
 
@@ -149,7 +185,23 @@ class ControlledRecorder:
                     continue
                 topic, payload = parts
                 try:
-                    if socket is self.sockets[1] and topic == STATE_TOPIC:
+                    if socket in self.snapshot_sockets:
+                        definition = self.snapshot_sockets[socket].get(topic)
+                        if definition is not None:
+                            try:
+                                definition.encode(payload, time.time_ns())
+                            except Exception:
+                                continue
+                            if definition.key == 'app/drone_1/mission':
+                                value = json.loads(payload)
+                                if self.active_episode == (value['physics_id'], value['episode_id']) and value['phase'] == 'FAULT':
+                                    outcome = 'mission_fault:' + value['reason']
+                                    if self.recorder.recording.outcome != outcome:
+                                        self.recorder.recording.receive(definition, payload)
+                                    self.recorder.recording.outcome = outcome
+                            else:
+                                self.cached_snapshots[definition.key] = (definition, payload)
+                    elif socket is self.sockets[1] and topic == STATE_TOPIC:
                         self._state(validate_state(decode_json(payload)), self.clock())
                     elif socket is self.sockets[1] and topic == END_TOPIC:
                         self._terminal(validate_end(decode_json(payload)), self.clock())
@@ -166,6 +218,7 @@ class ControlledRecorder:
         if self.last_state is not None and self.clock() - self.last_state >= HEARTBEAT_TIMEOUT_S:
             if self.active_episode is not None:
                 self.report("Physics state timed out; closing recording")
+                self.recorder.recording.outcome = "physics_timeout"
                 self._stop()
         if self.active_episode is not None and not self.recorder.active:
             self._stop()

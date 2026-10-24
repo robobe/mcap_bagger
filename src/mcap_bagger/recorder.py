@@ -2,6 +2,7 @@
 
 import os
 import json
+from bullet_msgs import schema_bytes
 from bullet_msgs.scenario import END_TOPIC, validate_end
 from bullet_msgs.flight import decode
 from bullet_msgs.control import MAX_CONTROL_BYTES
@@ -15,6 +16,7 @@ from bullet_msgs.shm import FrameReader, MAX_MESSAGE_BYTES, topic_prefix
 from mcap.writer import CompressionType, Writer
 
 from .config import Config
+from jsonschema import Draft202012Validator
 
 TELEMETRY_HWM = 64
 IMAGE_HWM = 8
@@ -51,6 +53,10 @@ class Recording:
         self.stream = None
         self.writer = None
         self.channels = {}
+        self.image_metadata_channels = {}
+        self.image_metadata_validator = Draft202012Validator(json.loads(schema_bytes("image_metadata.json")))
+        self.outcome = "manual_close"
+        self.episode = None
         self.thread = threading.Thread(target=self._write, name="mcap-writer")
 
     def start(self):
@@ -73,6 +79,13 @@ class Recording:
                     else "json",
                     schema_id=schemas[identity],
                 )
+            metadata_schema = self.writer.register_schema('image_metadata', 'jsonschema', schema_bytes('image_metadata.json'))
+            for topic in self.config.topics:
+                if topic.input == 'shm_image':
+                    key = topic.key + '/metadata'
+                    if key in self.channels:
+                        raise ValueError('image metadata topic is reserved: ' + key)
+                    self.image_metadata_channels[topic.key] = self.writer.register_channel(topic=key, message_encoding='json', schema_id=metadata_schema)
             with self.condition:
                 self.accepting = True
             self.receiver.start()
@@ -87,9 +100,10 @@ class Recording:
             self._finish()
             raise
 
-    def receive(self, topic, data, received_ns=None):
+    def receive(self, topic, data, received_ns=None, *, metadata=None):
         received_ns = time.time_ns() if received_ns is None else received_ns
         try:
+            metadata_bytes = b'' if metadata is None else json.dumps(metadata, allow_nan=False).encode()
             with self.condition:
                 if not self.accepting:
                     return
@@ -100,7 +114,7 @@ class Recording:
                     terminal = decode(bytes(data), validate_end)
                 if terminal is not None and terminal['event_id'] in self.terminal_event_ids:
                     return
-                size = len(data)
+                size = len(data) + len(metadata_bytes)
                 if not size:
                     raise ValueError("empty payload")
                 if self.queued_bytes + size > QUEUE_BYTES:
@@ -109,7 +123,7 @@ class Recording:
                     if len(self.terminal_event_ids) >= MAX_TERMINAL_EVENTS:
                         raise ValueError('terminal event capacity exceeded')
                     self.terminal_event_ids.add(terminal['event_id'])
-                self.queue.append((topic, bytes(data), received_ns))
+                self.queue.append((topic, bytes(data), received_ns, metadata_bytes))
                 self.queued_bytes += size
                 self.peak_queued_bytes = max(self.peak_queued_bytes, self.queued_bytes)
                 self.counts[topic.key]["accepted"] += 1
@@ -182,7 +196,7 @@ class Recording:
                                 metadata, pixels = result
                                 if any(metadata[name] != getattr(topic, name) for name in ('width', 'height', 'encoding', 'step')):
                                     raise ValueError('SHM image layout differs from recorder configuration')
-                                self.receive(topic, pixels, received_ns)
+                                self.receive(topic, pixels, received_ns, metadata=metadata)
                                 continue
                             key = socket.recv(copy=False)
                             if len(key) > MAX_TOPIC_BYTES:
@@ -225,13 +239,19 @@ class Recording:
                         if self.stopping:
                             break
                         continue
-                    topic, data, received_ns = self.queue.popleft()
-                    self.queued_bytes -= len(data)
+                    topic, data, received_ns, metadata_bytes = self.queue.popleft()
+                    self.queued_bytes -= len(data) + len(metadata_bytes)
                 try:
                     encoded, published_ns = topic.encode(data, received_ns)
                 except Exception as exc:
                     self.fail(f"{topic.key}: invalid message: {exc}")
                     continue
+                metadata = None
+                if metadata_bytes:
+                    metadata = dict(schema_version=1, image_topic=topic.key, image_log_time_ns=received_ns,
+                                    image_record_sequence=self.counts[topic.key]['written'] % 2**32,
+                                    metadata=json.loads(metadata_bytes))
+                    self.image_metadata_validator.validate(metadata)
                 self.writer.add_message(
                     channel_id=self.channels[topic.key],
                     data=encoded,
@@ -239,6 +259,10 @@ class Recording:
                     publish_time=published_ns,
                     sequence=self.counts[topic.key]["written"] % 2**32,
                 )
+                if metadata is not None:
+                    self.writer.add_message(channel_id=self.image_metadata_channels[topic.key],
+                                            data=json.dumps(metadata, allow_nan=False).encode(), log_time=received_ns,
+                                            publish_time=received_ns, sequence=metadata['image_record_sequence'])
                 self.counts[topic.key]["written"] += 1
         except Exception as exc:
             self.fail(f"write failed: {exc}")
@@ -249,6 +273,10 @@ class Recording:
     def _finish(self):
         try:
             if self.writer is not None:
+                health = dict(schema_version=1, episode=self.episode, launch_id=os.environ.get('BULLET_LAUNCH_ID'), complete=self.error is None, reason=self.error or 'closed',
+                              outcome=self.outcome, skipped_images=self.skipped_images,
+                              peak_queue_bytes=self.peak_queued_bytes, counts=self.counts)
+                self.writer.add_metadata('recording_health', {key: json.dumps(value) for key, value in health.items()})
                 self.writer.finish()
             if self.stream is not None:
                 self.stream.flush()

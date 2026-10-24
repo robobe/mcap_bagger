@@ -157,3 +157,17 @@ def test_json_endpoint_conflicts_with_image_and_control(config_files):
         path.write_text(yaml.safe_dump(data))
         with pytest.raises(ValueError, match='differ'):
             Config.load(path)
+
+
+def test_only_shared_render_health_allowed_on_image_endpoint(config_files):
+    path,data=config_files
+    data['topics'].append(dict(key='analysis/render/health',input='json',schema='bullet_msgs:render_health.json',timestamp_source='receive',endpoint=data['transport_config']))
+    # Resolve the actual endpoint from the transport file rather than a path.
+    transport=json.loads((path.parent/data['transport_config']).read_text())
+    data['topics'][-1]['endpoint']=transport['image_endpoint']
+    path.write_text(yaml.safe_dump(data))
+    assert Config.load(path).topics[-1].key=='analysis/render/health'
+    data['topics'][-1]['schema']='bullet_msgs:mission.json'
+    path.write_text(yaml.safe_dump(data))
+    with pytest.raises(ValueError,match='JSON endpoint'):
+        Config.load(path)

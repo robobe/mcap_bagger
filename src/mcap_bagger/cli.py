@@ -4,6 +4,7 @@ import argparse
 import shlex
 import signal
 import sys
+from pathlib import Path
 
 from .control import ControlledRecorder
 from .recorder import Recorder
@@ -12,6 +13,7 @@ from .recorder import Recorder
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", help="load YAML and wait for simulation runs")
+    parser.add_argument("--ready-file", type=Path, help="write readiness marker after control subscriptions are installed")
     args = parser.parse_args()
     service = None
     recorder = Recorder(
@@ -28,6 +30,8 @@ def main():
             print(recorder.init(args.config), flush=True)
             service = ControlledRecorder(recorder, report=lambda message: print(message, flush=True))
             print("Waiting for physics running state; Stop/Reset closes recording", flush=True)
+            if args.ready_file:
+                args.ready_file.write_text("ready\n")
             while True:
                 service.poll()
         print("Commands: init <yaml>, start, close, quit")
@@ -63,6 +67,15 @@ def main():
             service.close()
         else:
             print(recorder.close())
+        if args.ready_file:
+            try:
+                args.ready_file.unlink(missing_ok=True)
+            except OSError as error:
+                print(f'Could not remove readiness marker: {error}', file=sys.stderr, flush=True)
         signal.signal(signal.SIGTERM, previous)
         signal.signal(signal.SIGINT, previous_interrupt)
     return 1 if recorder.recording and recorder.recording.error else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

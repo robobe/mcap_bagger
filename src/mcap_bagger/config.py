@@ -177,7 +177,8 @@ class Config:
                 if "endpoint" in item:
                     validate_endpoint(item["endpoint"])
                     collision_report = item['key'] == COLLISION_TOPIC.decode() and item['schema'] == 'bullet_msgs:collision.json'
-                    if item["endpoint"] == transport["image_endpoint"] or (item["endpoint"] == transport["control_endpoint"] and not collision_report):
+                    render_health = item['key'] == 'analysis/render/health' and item['schema'] == 'bullet_msgs:render_health.json'
+                    if (item["endpoint"] == transport["image_endpoint"] and not render_health) or (item["endpoint"] == transport["control_endpoint"] and not collision_report):
                         raise ValueError("JSON endpoint must differ from image and control endpoints")
                 if item["timestamp_source"] not in ("receive", "publisher"):
                     raise ValueError("timestamp_source must be receive or publisher")
