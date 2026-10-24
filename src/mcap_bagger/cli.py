@@ -5,16 +5,30 @@ import shlex
 import signal
 import sys
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from .control import ControlledRecorder
 from .recorder import Recorder
+
+
+def _prepare_output_directory(path):
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        with NamedTemporaryFile(prefix='.mcap-write-check-', dir=path) as probe:
+            probe.write(b'\0')
+            probe.flush()
+    except OSError as error:
+        raise ValueError(f'Cannot write MCAP output directory {path}: {error}') from error
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", help="load YAML and wait for simulation runs")
     parser.add_argument("--ready-file", type=Path, help="write readiness marker after control subscriptions are installed")
+    parser.add_argument('--output-dir', help='MCAP directory override; requires --config, relative to the working directory')
     args = parser.parse_args()
+    if args.output_dir is not None and not args.config:
+        parser.error('--output-dir requires --config')
     service = None
     recorder = Recorder(
         on_error=lambda message: print(message, file=sys.stderr, flush=True)
@@ -27,7 +41,8 @@ def main():
     previous = signal.signal(signal.SIGTERM, terminate)
     try:
         if args.config:
-            print(recorder.init(args.config), flush=True)
+            print(recorder.init(args.config, output_dir=args.output_dir), flush=True)
+            _prepare_output_directory(recorder.config.output_dir)
             service = ControlledRecorder(recorder, report=lambda message: print(message, flush=True))
             print("Waiting for physics running state; Stop/Reset closes recording", flush=True)
             if args.ready_file:

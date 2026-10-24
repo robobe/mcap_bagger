@@ -204,3 +204,28 @@ partial files with MCAP tooling before reporting; never overwrite the original.
 For a desktop overview, the sibling [FlightLens](../flight_lens/README.md) project
 opens the same indexed MCAP files directly, with linked plots, event summaries
 and exact event-frame previews. It does not modify recordings or flight settings.
+
+## MCAP directory override
+
+For the controlled CLI, `--output-dir PATH` overrides only the YAML's
+`output_dir`. It requires `--config`; it does not apply to the manual prompt.
+Relative override paths resolve from the process working directory, and `~`
+expands to the user's home. Without the flag, YAML-relative behavior remains.
+Transport and schema paths retain the YAML file's original base directory.
+
+```bash
+uv run --locked --all-packages --all-extras --all-groups mcap-bagger \
+  --config ../bullet_render/configs/recorder.yaml --output-dir /data/flights
+```
+
+The controlled service creates and checks the output directory with a temporary
+write before installing control subscriptions or creating the readiness marker.
+The probe is cleaned up, and failures name the offending directory and exit with
+a nonzero status. This lets the standard launcher refuse to start flight services
+when recording cannot begin. Later disk failures still retain partial recordings
+and diagnostics using the existing behavior.
+
+Library callers can use `Recorder.init(yaml_path, output_dir=path)` to override
+the immutable loaded configuration. Initialization resolves paths without creating
+directories; the controlled CLI performs preflight checks, while manual/library
+recording still validates writes when starting a recording.

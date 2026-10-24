@@ -1,6 +1,8 @@
 """Bounded receive queue and a single owner of each MCAP output file."""
 
 import os
+from dataclasses import replace
+from pathlib import Path
 import json
 from bullet_msgs import schema_bytes
 from bullet_msgs.scenario import END_TOPIC, validate_end
@@ -330,10 +332,14 @@ class Recorder:
     def active(self):
         return self.recording is not None and not self.recording.done.is_set()
 
-    def init(self, path):
+    def init(self, path, *, output_dir=None):
         if self.active:
             raise ValueError("close the recording before init")
         config = Config.load(path)
+        if output_dir is not None:
+            if not isinstance(output_dir, (str, Path)) or not str(output_dir).strip():
+                raise ValueError('output_dir override must be a nonempty path')
+            config = replace(config, output_dir=Path(output_dir).expanduser().resolve())
         self.config = config
         return config.summary()
 
