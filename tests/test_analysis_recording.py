@@ -22,6 +22,11 @@ def msp_topic():
     return Topic(key='analysis/app/msp',input='json',schema_name='analysis_msp',schema_encoding='jsonschema',schema_data=json.dumps(schema).encode(),validator=Draft202012Validator(schema))
 
 
+def feedback_topic():
+    schema=json.loads(schema_bytes('flight_feedback.json'))
+    return Topic(key='flight/drone_1/feedback',input='json',schema_name='flight_feedback',schema_encoding='jsonschema',schema_data=json.dumps(schema).encode(),validator=Draft202012Validator(schema))
+
+
 def test_current_msp_analysis_packet_finalizes_recording(config):
     topic=msp_topic()
     source=dict(physics_id='p',episode_id='e',stream_id='s',step_index=1,simulation_time_s=1.,measurement_us=1000)
@@ -38,6 +43,24 @@ def test_current_msp_analysis_packet_finalizes_recording(config):
                                      output_msp_delivery_queue_depth=0,output_dropped_bbox=0,output_dropped_los=0,
                                      output_dropped_msp_delivery=0),
                 attitude=None,altitude=None,status={'mode_flags':1,'arming_disabled_flags':0,'received_at':1.})
+    run=Recording(replace(config,topics=(topic,)))
+    run.start()
+    try:
+        run.receive(topic,json.dumps(packet).encode())
+    finally:
+        run.close()
+    assert run.error is None
+    assert run.path.suffix == '.mcap'
+    assert not run.final_path.with_suffix('.mcap.partial').exists()
+
+
+def test_current_feedback_with_agl_finalizes_recording(config):
+    topic=feedback_topic()
+    source=dict(physics_id='p',episode_id='e',stream_id='s',step_index=1,simulation_time_s=1.,measurement_us=1000)
+    packet=dict(schema_version=2, source=source, takeoff_height_m=6.5, barometer_altitude_m=3.,
+                rangefinder=dict(distance_cm=275., valid=True), orientation_xyzw=[0., 0., 0., 1.],
+                armed=False, mode='angle', last_applied_sequence=0, owner_id=None,
+                state='running', reason='test')
     run=Recording(replace(config,topics=(topic,)))
     run.start()
     try:
