@@ -20,6 +20,12 @@ def main(argv=None):
     if args.action == "version":
         print(version("mcap-bagger"))
         return 0
+    if args.action == "server":
+        import uvicorn
+        from .server import create_app
+        from .registration import RegistrationConfig
+        uvicorn.run(create_app(RegistrationConfig.load(args.config)), host=args.host, port=args.port, workers=1)
+        return 0
     if args.action == "run":
         from .registration import RegistrationConfig
         from .pipeline import Pipeline

@@ -16,7 +16,12 @@ QUEUE_ENTRIES = 4096
 
 
 class Pipeline:
-    def __init__(self, config):
+    def __init__(self, config, filename=None):
+        self.filename = filename
+        self.ready = threading.Event()
+        self.done = threading.Event()
+        self.thread = None
+        self.writer = None
         self.config = config
         self.shared = SharedQueues(QUEUE_BYTES, QUEUE_ENTRIES)
         self.condition = self.shared.condition
@@ -99,9 +104,11 @@ class Pipeline:
                 self.condition.notify_all()
 
     def write(self):
-        writer = McapWriter(self.config, self.shared)
+        writer = McapWriter(self.config, self.shared, self.filename)
+        self.writer = writer
         try:
             writer.start()
+            self.ready.set()
             logger.info("Recording started: {} ({} channels)", writer.path, len(self.config.channels))
             for index in range(2):
                 thread = threading.Thread(target=self.receive, args=(index,),
@@ -116,6 +123,7 @@ class Pipeline:
         except BaseException as exc:
             self.fail(exc)
         finally:
+            self.ready.set()
             self.stop.set()
             for thread in self.producers:
                 if thread.ident is not None:
@@ -126,22 +134,36 @@ class Pipeline:
                 except Exception as exc:
                     self.fail(exc)
 
-    def run(self):
-        done = threading.Event()
-
-        def write():
+    def start(self):
+        def coordinate():
             try:
                 self.write()
             finally:
-                done.set()
+                self.ready.set()
+                self.done.set()
+        self.thread = threading.Thread(target=coordinate, name='pipeline-coordinator')
+        self.thread.start()
+        self.ready.wait()
+        if self.error:
+            self.thread.join()
+            raise self.error
 
-        thread = threading.Thread(target=write, name='pipeline-coordinator')
-        thread.start()
+    def finish(self):
+        self.stop.set()
+        self.thread.join()
+        if self.error:
+            raise self.error
+        return self.writer.path
+
+    def run(self):
         try:
-            while not done.wait(.1):
-                pass
-        except KeyboardInterrupt:
-            self.stop.set()
-            done.wait()
-        thread.join()
+            self.start()
+            try:
+                while not self.done.wait(.1):
+                    pass
+            except KeyboardInterrupt:
+                self.stop.set()
+            self.finish()
+        except Exception as exc:
+            self.fail(exc)
         return 1 if self.error else 0

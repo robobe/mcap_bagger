@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MCAP Recorder</title>
+<style>
+body{font:16px system-ui;background:#f4f6fa;color:#152238;max-width:1000px;margin:40px auto;padding:0 20px}section{background:white;padding:24px;border-radius:12px;margin:20px 0}button,input{font:inherit;padding:10px;border:1px solid #aab5c5;border-radius:6px}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px;border-bottom:1px solid #ddd}#error{color:#a21b1b;white-space:pre-wrap}.actions{display:flex;gap:8px}input{max-width:100%;box-sizing:border-box}a{color:#1554b5}
+</style>
+<h1>MCAP Recorder</h1><p>Trusted LAN controls · one recording at a time</p>
+<section><p id="status" role="status">Loading…</p><label for="filename">Recording filename</label>
+<div class="actions"><input id="filename" placeholder="test_run" required><button id="start">Start</button><button id="stop">Stop</button></div>
+<p id="error" role="alert"></p></section>
+<section><div class="actions"><h2>Recordings</h2><button id="clear">Clear all inactive</button></div>
+<div style="overflow:auto"><table><thead><tr><th>Name</th><th>Size</th><th>Modified</th><th>Status</th><th>Actions</th></tr></thead><tbody id="files"></tbody></table></div></section>
+<script>
+let busy=false, state='idle';
+const el=id=>document.getElementById(id);
+async function request(url,method='GET',body){const r=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:JSON.stringify(data.detail));return data;}
+function controls(){el('start').disabled=busy||['starting','recording','stopping'].includes(state);el('stop').disabled=busy||state!=='recording';el('clear').disabled=busy;document.querySelectorAll('[data-delete]').forEach(b=>b.disabled=busy);}
+async function refresh(){const [s,files]=await Promise.all([request('/api/status'),request('/api/recordings')]);state=s.state;el('status').textContent=`${s.state.toUpperCase()}${s.filename?' · '+s.filename:''}`;if(s.error)el('error').textContent=s.error;el('files').replaceChildren();for(const f of files){const tr=document.createElement('tr');for(const text of [f.name,(f.size/1024/1024).toFixed(2)+' MiB',new Date(f.modified*1000).toLocaleString(),f.active?'Recording':f.partial?'Partial':'Complete']){const td=document.createElement('td');td.textContent=text;tr.append(td);}const td=document.createElement('td');if(!f.active){const a=document.createElement('a');a.textContent='Download';a.href='/api/recordings/'+encodeURIComponent(f.name)+'/download';td.append(a,' ');const b=document.createElement('button');b.textContent='Delete';b.dataset.delete='true';b.onclick=()=>{if(confirm('Permanently delete "'+f.name+'"? This cannot be undone.'))action(()=>request('/api/recordings/'+encodeURIComponent(f.name),'DELETE'));};td.append(b);}tr.append(td);el('files').append(tr);}controls();}
+async function action(fn){if(busy)return;busy=true;el('error').textContent='';controls();try{const result=await fn();if(result.errors&&Object.keys(result.errors).length)throw Error(JSON.stringify(result.errors));}catch(e){el('error').textContent=e.message;}finally{busy=false;await refresh().catch(e=>el('error').textContent=e.message);controls();}}
+el('start').onclick=()=>action(()=>request('/api/recordings/start','POST',{filename:el('filename').value}));el('stop').onclick=()=>action(()=>request('/api/recordings/stop','POST'));el('clear').onclick=()=>{if(confirm('Permanently delete all inactive recordings?'))action(()=>request('/api/recordings','DELETE'));};
+refresh().catch(e=>el('error').textContent=e.message);setInterval(()=>{if(!busy)refresh().catch(e=>el('error').textContent=e.message);},1000);
+</script></html>

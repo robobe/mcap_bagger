@@ -2,14 +2,38 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Publish only (10 seconds)",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "--locked",
+        "python",
+        "examples/run_demo.py",
+        "--config",
+        "config/recorder.yaml",
+        "--publish-only"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Record example (10 seconds)",
       "type": "process",
       "command": "uv",
       "args": [
-        "run", "--locked", "python", "examples/run_demo.py",
-        "--config", "config/recorder.yaml"
+        "run",
+        "--locked",
+        "python",
+        "examples/run_demo.py",
+        "--config",
+        "config/recorder.yaml"
       ],
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     },
     {
@@ -17,10 +41,36 @@
       "type": "process",
       "command": "uv",
       "args": [
-        "run", "--locked", "python", "examples/summarize_mcap.py",
+        "run",
+        "--locked",
+        "python",
+        "examples/summarize_mcap.py",
         "${input:mcapPath}"
       ],
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Recording server",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "--locked",
+        "mcap-bagger",
+        "server",
+        "--config",
+        "config/recorder.yaml",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "9090"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     }
   ],

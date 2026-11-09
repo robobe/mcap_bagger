@@ -47,7 +47,8 @@ class SharedQueues:
 
 
 class McapWriter:
-    def __init__(self, config, queues):
+    def __init__(self, config, queues, filename=None):
+        self.filename = filename
         self.config = config
         self.queues = queues
         self.ready = threading.Event()
@@ -77,7 +78,9 @@ class McapWriter:
             config = self.config
             config.output_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
-            final = config.output_dir / f'{config.project}_{stamp}.mcap'
+            final = config.output_dir / (self.filename or f'{config.project}_{stamp}.mcap')
+            if final.exists():
+                raise FileExistsError(final)
             self.path = final.with_suffix('.mcap.partial')
             with self.path.open('xb') as stream:
                 writer = Writer(stream, compression=CompressionType.NONE)

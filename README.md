@@ -49,3 +49,38 @@ recordings are preserved; busy endpoints cause failure rather than replacement.
 The summary counts all configured channels and computes observed rates from
 MCAP receive timestamps using (count-1)/(last-first). Single-message and empty
 channels show N/A. Both scripts accept `version` and `--help`.
+
+## Recording server
+
+```bash
+uv run --locked mcap-bagger server --config config/recorder.yaml --host 0.0.0.0 --port 9090
+```
+
+Open `http://<recorder-machine-ip>:9090` from a machine on your trusted LAN.
+There is no authentication: anyone who can reach the server can control and
+remove inactive recordings. Run one server worker; remote HTTP access does not
+change the loopback-only ZeroMQ configuration. The YAML is fixed at startup.
+
+Enter a filename stem (1–64 letters, digits, underscores or hyphens), optionally
+ending in `.mcap`, then Start. Stop drains queues and finalizes the file. Existing
+names are never overwritten. Only one recording can run at a time. The page
+lists completed and partial recordings and supports downloads, individual Delete,
+and Clear all inactive, with deletion confirmation. Active files are protected.
+Partial downloads may require MCAP recovery tools. All operations stay inside
+the configured output directory and reject symlinks. Server shutdown stops and
+finalizes any active session. A VS Code “Recording server” task is included.
+
+The API exposes `/api/status`, `/api/recordings`, POST
+`/api/recordings/start` with `{"filename":"test_run"}`, POST
+`/api/recordings/stop`, GET `/api/recordings/{name}/download`, and DELETE
+`/api/recordings/{name}` or `/api/recordings`. FastAPI's `/docs` describes requests.
+
+To publish the same streams without starting a recorder (for example, while
+using the server controls), run:
+
+```bash
+uv run --locked python examples/run_demo.py --config config/recorder.yaml --publish-only
+```
+
+Publication starts immediately and lasts ten seconds, even with no subscribers.
+The script does not start or stop an independently running recorder.
