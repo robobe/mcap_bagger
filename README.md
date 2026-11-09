@@ -84,3 +84,14 @@ uv run --locked python examples/run_demo.py --config config/recorder.yaml --publ
 
 Publication starts immediately and lasts ten seconds, even with no subscribers.
 The script does not start or stop an independently running recorder.
+
+## Desktop test player
+
+Run `uv run --locked mcap-bagger player`. Load a finalized MCAP using the native
+file picker. Start plays at recorded speed; Stop pauses; Step advances to the
+next image while updating intervening text topics. Start resumes, or restarts
+at EOF. JPEG previews are self-contained; raw previews require previously
+encountered camera_info with width, height, step, and rgb8/bgr8 encoding.
+Ordinary payloads appear as JSON, text, or hex, truncated at 16 KiB per topic.
+This is a simple test viewer with no seeking or editing. Tkinter must be installed
+manually if absent (Ubuntu package: `python3-tk`); a desktop display is required.

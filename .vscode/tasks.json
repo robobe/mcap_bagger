@@ -2,6 +2,16 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "MCAP desktop player",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--locked", "mcap-bagger", "player"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Publish only (10 seconds)",
       "type": "process",
       "command": "uv",

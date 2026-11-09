@@ -20,6 +20,15 @@ def main(argv=None):
     if args.action == "version":
         print(version("mcap-bagger"))
         return 0
+    if args.action == "player":
+        from .player import open_player
+        from loguru import logger
+        try:
+            open_player()
+            return 0
+        except Exception as exc:
+            logger.error("{}", exc)
+            return 1
     if args.action == "server":
         import uvicorn
         from .server import create_app
