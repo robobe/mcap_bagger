@@ -174,3 +174,56 @@ class FrameReader:
             mapping.close()
         self.mappings.clear()
 
+
+class FramePublisher:
+    """Own three slots and publish complete frames compatible with FrameReader."""
+    def __init__(self, width=640, height=480):
+        self.width, self.height = width, height
+        self.step = width * 3
+        _layout(width, height, 'rgb8', self.step)
+        self.session = uuid4().hex
+        self.sequence = 0
+        self.slots = []
+        try:
+            for index in range(SLOTS):
+                path = Path('/dev/shm' + slot_name(self.session, index))
+                fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_RDWR | os.O_CLOEXEC, 0o600)
+                self.slots.append((path, fd))
+                os.fchmod(fd, 0o600)
+                os.ftruncate(fd, HEADER.size + self.step * height)
+        except BaseException:
+            self.close()
+            raise
+
+    def write(self, topic, pixels):
+        if len(pixels) != self.step * self.height:
+            raise ValueError('incorrect pixel byte count')
+        self.sequence += 1
+        index = (self.sequence - 1) % SLOTS
+        path, fd = self.slots[index]
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return None
+        try:
+            stamp = time.time_ns()
+            metadata = dict(version=1, session=self.session, slot=index,
+                            shm_name=slot_name(self.session, index), width=self.width,
+                            height=self.height, encoding='rgb8', step=self.step,
+                            bytes=len(pixels), sequence=self.sequence, capture_ns=stamp)
+            descriptor = encode_descriptor(topic, metadata)
+            with mmap.mmap(fd, HEADER.size + len(pixels)) as memory:
+                memory[:HEADER.size] = bytes(HEADER.size)
+                memory[HEADER.size:] = pixels
+                memory[:HEADER.size] = HEADER.pack(MAGIC, VERSION, index, self.width,
+                    self.height, ENCODINGS['rgb8'], self.step, len(pixels), self.sequence,
+                    stamp, 1, self.session.encode().ljust(64, b'\0'))
+            return descriptor
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+
+    def close(self):
+        for path, fd in self.slots:
+            os.close(fd)
+            path.unlink(missing_ok=True)
+        self.slots.clear()

@@ -33,3 +33,19 @@ The old interactive CLI, implicit simulation mode, legacy YAML, flight report,
 and legacy output/readiness options have been retired. Use `run --config` and
 set output location in YAML. `register_channels` remains a Python helper for
 creating registration-only files. Automated tests cover the standalone pipeline.
+
+## Ten-second publishing example
+
+```bash
+uv run --locked python examples/run_demo.py --config config/recorder.yaml
+uv run --locked python examples/summarize_mcap.py recordings/<printed-file>.mcap
+```
+
+The demo starts the recorder after binding publishers and waits for subscriptions.
+It publishes changing 640x480 RGB8 SHM images at 30 FPS, synthetic IMU at 100 Hz,
+and camera_info at 1 Hz for ten seconds. It keeps SHM alive until recorder
+shutdown. Configured image compression is applied by the recorder. Existing
+recordings are preserved; busy endpoints cause failure rather than replacement.
+The summary counts all configured channels and computes observed rates from
+MCAP receive timestamps using (count-1)/(last-first). Single-message and empty
+channels show N/A. Both scripts accept `version` and `--help`.

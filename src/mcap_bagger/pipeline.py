@@ -102,6 +102,7 @@ class Pipeline:
         writer = McapWriter(self.config, self.shared)
         try:
             writer.start()
+            logger.info("Recording started: {} ({} channels)", writer.path, len(self.config.channels))
             for index in range(2):
                 thread = threading.Thread(target=self.receive, args=(index,),
                                           name=('message-receiver', 'image-handler')[index])
