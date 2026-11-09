@@ -10,8 +10,6 @@ from tempfile import NamedTemporaryFile
 import click
 
 from .cli import CLI
-from .control import ControlledRecorder
-from .recorder import Recorder
 
 
 def _prepare_output_directory(path):
@@ -35,6 +33,23 @@ def main(argv=None):
     if args.action == "version":
         print(version("mcap-bagger"))
         return 0
+    if args.action == "run":
+        from .registration import RegistrationConfig
+        from .pipeline import Pipeline
+
+        def terminate(signum, frame):
+            raise KeyboardInterrupt
+
+        previous = signal.signal(signal.SIGTERM, terminate)
+        try:
+            return Pipeline(RegistrationConfig.load(args.config)).run()
+        except Exception as exc:
+            click.echo(f"Error: {exc}", err=True)
+            return 1
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+    from .control import ControlledRecorder
+    from .recorder import Recorder
     service = None
     recorder = Recorder(
         on_error=lambda message: print(message, file=sys.stderr, flush=True)

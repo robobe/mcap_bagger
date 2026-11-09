@@ -15,6 +15,12 @@ application behavior to the appropriate modules. The CLI class uses Click only
 to parse and validate arguments and provide help; it must not dispatch commands
 or execute application operations.
 
+## Plans
+
+Save each finalized implementation plan as a Markdown file in `docs/plans/`,
+creating the directory when needed. Use a descriptive filename and update the
+saved plan when its scope or decisions change.
+
 ## Build, Test, and Development Commands
 
 Use Python 3.12 and uv: `uv sync --locked --extra demo`,

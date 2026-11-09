@@ -1,0 +1,13 @@
+project: image_imu
+output_dir: ../recordings
+channels:
+  - topic: camera/front/image
+    endpoint: tcp://127.0.0.1:5556
+    shm: true
+    compress: jpeg  # raw or jpeg
+  - topic: camera_info
+    endpoint: tcp://127.0.0.1:5555
+    shm: false
+  - topic: imu
+    endpoint: tcp://127.0.0.1:5555
+    shm: false

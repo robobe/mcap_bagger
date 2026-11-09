@@ -23,7 +23,7 @@ class CLI:
             "mcap-bagger",
             help="Manual command loop or simulation-controlled recorder service.",
             params=[
-                click.Argument(["subcommand"], type=click.Choice(["version"]), required=False),
+                click.Argument(["subcommand"], type=click.Choice(["version", "run"]), required=False),
                 click.Option(["--config"], help="Load YAML and wait for simulation runs."),
                 click.Option(["--ready-file"], type=click.Path(path_type=Path),
                              help="Write readiness marker after control subscriptions are installed."),
@@ -33,10 +33,16 @@ class CLI:
         )
         with command.make_context("mcap-bagger", list(argv)) as context:
             values = context.params
+            if values["subcommand"] == "run" and not values["config"]:
+                raise click.UsageError("run requires --config", context)
+            if values["subcommand"] == "run" and (values["ready_file"] is not None or values["output_dir"] is not None):
+                raise click.UsageError("run uses output_dir from YAML and does not support --ready-file", context)
             if values["subcommand"] != "version" and values["output_dir"] is not None and not values["config"]:
                 raise click.UsageError("--output-dir requires --config", context)
             if values["subcommand"] == "version":
                 action = "version"
+            elif values["subcommand"] == "run":
+                action = "run"
             elif values["config"]:
                 action = "record"
             else:

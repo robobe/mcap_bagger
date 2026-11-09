@@ -58,7 +58,7 @@ def test_permission_or_write_error_aborts_before_readiness(config_files,tmp_path
     output=tmp_path/'blocked'
     ready=tmp_path/'ready'
     controlled=Mock()
-    monkeypatch.setattr(app,'ControlledRecorder',controlled)
+    monkeypatch.setattr('mcap_bagger.control.ControlledRecorder', controlled)
     monkeypatch.setattr('sys.argv',['mcap-bagger','--config',str(config_files[0]),'--output-dir',str(output),'--ready-file',str(ready)])
     real_probe=app.NamedTemporaryFile
     if failure=='create':

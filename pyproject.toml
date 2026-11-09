@@ -8,8 +8,9 @@ version = "0.1.0"
 description = "Record raw ZeroMQ images and JSON telemetry into MCAP"
 requires-python = ">=3.12"
 dependencies = [
-    "bullet-msgs",
   "click>=8.5,<9",
+  "loguru>=0.7,<1",
+  "pillow>=11,<13",
   "pyzmq>=27,<28",
   "foxglove-schemas-protobuf>=0.3,<0.4",
   "jsonschema>=4,<5",
@@ -29,6 +30,3 @@ mcap-bagger = "mcap_bagger.main:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-[tool.uv.sources]
-bullet-msgs = { workspace = true }

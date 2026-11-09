@@ -236,3 +236,23 @@ Library callers can use `Recorder.init(yaml_path, output_dir=path)` to override
 the immutable loaded configuration. Initialization resolves paths without creating
 directories; the controlled CLI performs preflight checks, while manual/library
 recording still validates writes when starting a recording.
+
+## Record opaque channels
+
+Run `uv run --locked mcap-bagger run --config config/recorder.yaml` to record
+until Ctrl+C or SIGTERM. Paths are relative to the YAML. Ordinary channels use
+two ZeroMQ frames (topic, payload) and preserve payload bytes unchanged.
+
+SHM image notifications use the existing publisher descriptor/header protocol,
+implemented locally without a custom package dependency. A separate image
+thread copies pixels and applies `compress: raw` (default) or `jpeg` (quality 90).
+Publisher-provided `camera_info` remains an ordinary opaque channel.
+
+Message and image threads feed independent queues, each limited to 64 MiB and
+4,096 entries. A single MCAP writer alternates between queues. Queue overflow
+stops the run with an error. Shutdown drains accepted entries and finalizes the
+file; failures retain `.mcap.partial`. No companion image metadata is generated.
+JPEG is lossy. Queue limits exclude in-flight frames and transport buffers.
+
+The `register_channels` Python function remains available for registration-only
+MCAP creation. Legacy recording paths are separate and still require cleanup.
