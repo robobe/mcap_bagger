@@ -22,7 +22,7 @@ class CLI:
             "mcap-bagger",
             help="Record opaque ZeroMQ and SHM channels.",
             params=[
-                click.Argument(["subcommand"], type=click.Choice(["version", "run", "server", "player"]), required=True),
+                click.Argument(["subcommand"], type=click.Choice(["version", "default-config", "run", "server", "player"]), required=True),
                 click.Option(["--host"], default="0.0.0.0"),
                 click.Option(["--port"], default=9090, type=click.IntRange(1, 65535)),
                 click.Option(["--config"], help="Load channel declarations from YAML."),
@@ -36,5 +36,7 @@ class CLI:
                 raise click.UsageError("--host and --port require server", context)
             if values["subcommand"] == "player" and values["config"] is not None:
                 raise click.UsageError("player uses the Load button, not --config", context)
+            if values["subcommand"] == "default-config" and values["config"] is not None:
+                raise click.UsageError("default-config does not accept --config", context)
             action = values["subcommand"]
             return CommandData(action=action, **values)

@@ -2,6 +2,17 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Build wheel",
+      "type": "process",
+      "command": "uv",
+      "args": ["build", "--wheel", "--out-dir", "dist"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
       "label": "MCAP desktop player",
       "type": "process",
       "command": "uv",

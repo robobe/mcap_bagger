@@ -3,6 +3,21 @@
 Standalone recording of opaque ZeroMQ payloads and shared-memory images.
 Requires Python 3.12 and uv. No sibling project packages are required.
 
+Build the wheel with `uv build --wheel --out-dir dist` or the VS Code **Build wheel** task.
+The result is in `dist/` and includes the web UI (`mcap_bagger/web.html`) and
+example configuration (`mcap_bagger/config/recorder.yaml`). Copy the packaged
+configuration to a writable location before editing it or recording.
+
+Print the default YAML with `mcap-bagger default-config`, or save it using shell
+redirection:
+
+```bash
+uv run --locked mcap-bagger default-config > recorder.yaml
+```
+
+Edit the saved config before use. `output_dir` is relative to its location;
+the default `../recordings` writes to the parent directory's `recordings/` folder.
+
 ```bash
 uv sync --locked
 uv run --locked mcap-bagger version

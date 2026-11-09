@@ -6,10 +6,33 @@ import subprocess
 import sys
 import time
 from importlib.metadata import version
+from pathlib import Path
 
 import pytest
 import zmq
+import yaml
 from mcap.reader import make_reader
+
+
+def test_default_config_redirects_to_file(tmp_path):
+    expected = Path('config/recorder.yaml').read_bytes()
+    output = tmp_path / 'recorder.yaml'
+    with output.open('wb') as stream:
+        result = subprocess.run(
+            ['mcap-bagger', 'default-config'], cwd=tmp_path,
+            stdout=stream, stderr=subprocess.PIPE, timeout=10,
+        )
+    assert result.returncode == 0
+    assert result.stderr == b''
+    assert output.read_bytes() == expected
+    assert yaml.safe_load(output.read_text())['channels']
+
+
+def test_default_config_rejects_config_option():
+    from mcap_bagger.cli import CLI
+    import click
+    with pytest.raises(click.UsageError, match='does not accept --config'):
+        CLI().parse(['default-config', '--config', 'other.yaml'])
 
 
 def test_version_command_exits_without_starting_recording(tmp_path):

@@ -3,6 +3,7 @@
 import signal
 import sys
 from importlib.metadata import version
+from pathlib import Path
 
 import click
 
@@ -19,6 +20,13 @@ def main(argv=None):
         raise SystemExit(exc.exit_code)
     if args.action == "version":
         print(version("mcap-bagger"))
+        return 0
+    if args.action == "default-config":
+        config = Path(__file__).with_name('config') / 'recorder.yaml'
+        if not config.is_file():
+            # Editable installs keep the example configuration outside the package.
+            config = Path(__file__).resolve().parents[2] / 'config' / 'recorder.yaml'
+        click.echo(config.read_text(), nl=False)
         return 0
     if args.action == "player":
         from .player import open_player
