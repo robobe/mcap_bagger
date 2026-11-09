@@ -21,7 +21,7 @@ def make_frame(number):
     return image.tobytes()
 
 
-def run_demo(config_path, duration=10):
+def run_demo(config_path, duration=10, publish_only=False):
     config = RegistrationConfig.load(config_path)
     images = [c for c in config.channels if c.shm]
     ordinary = {c.topic: c for c in config.channels if not c.shm}
@@ -32,7 +32,7 @@ def run_demo(config_path, duration=10):
     rates = {image.topic: 30, 'imu': 100, 'camera_info': 1}
     counts = dict.fromkeys(rates, 0)
     skipped = dict.fromkeys(rates, 0)
-    before = set(config.output_dir.glob('*.mcap'))
+    before = set(config.output_dir.glob('*.mcap')) if not publish_only else set()
     publisher = FramePublisher()
     process = None
     try:
@@ -46,22 +46,24 @@ def run_demo(config_path, duration=10):
                         socket.setsockopt(zmq.LINGER, 0)
                         socket.setsockopt(zmq.XPUB_VERBOSE, 1)
                         socket.bind(channel.endpoint)
-                process = subprocess.Popen([sys.executable, '-m', 'mcap_bagger.main',
-                                            'run', '--config', str(config_path)], stdin=subprocess.DEVNULL)
-                pending = {(c.endpoint, topic_prefix(c.topic) if c.shm else c.topic.encode()) for c in config.channels}
-                deadline = time.monotonic() + 5
-                while pending:
-                    if process.poll() is not None or time.monotonic() > deadline:
-                        raise RuntimeError('recorder subscriptions did not become ready')
-                    for endpoint, socket in sockets.items():
-                        if socket.poll(10):
-                            event = socket.recv()
-                            if event[:1] == b'\x01':
-                                pending.discard((endpoint, event[1:]))
+                if not publish_only:
+                    process = subprocess.Popen([sys.executable, '-m', 'mcap_bagger.main',
+                                                'run', '--config', str(config_path)], stdin=subprocess.DEVNULL)
+                    pending = {(c.endpoint, topic_prefix(c.topic) if c.shm else c.topic.encode()) for c in config.channels}
+                    deadline = time.monotonic() + 5
+                    while pending:
+                        if process.poll() is not None or time.monotonic() > deadline:
+                            raise RuntimeError('recorder subscriptions did not become ready')
+                        for endpoint, socket in sockets.items():
+                            if socket.poll(10):
+                                event = socket.recv()
+                                if event[:1] == b'\x01':
+                                    pending.discard((endpoint, event[1:]))
+                logger.info('Publishing for {} seconds{}', duration, ' without launching a recorder' if publish_only else '')
                 start = time.monotonic()
                 next_tick = dict.fromkeys(rates, 0)
                 while time.monotonic() - start < duration:
-                    if process.poll() is not None:
+                    if process is not None and process.poll() is not None:
                         raise RuntimeError('recorder exited during publication')
                     elapsed = time.monotonic() - start
                     for topic, rate in rates.items():
@@ -85,10 +87,11 @@ def run_demo(config_path, duration=10):
                             sockets[channels[topic].endpoint].send_multipart([topic.encode(), json.dumps(payload).encode()])
                         counts[topic] += 1
                     time.sleep(.001)
-                time.sleep(.2)  # Allow final notifications to arrive before stopping reception.
-                process.terminate()
-                if process.wait(timeout=10) != 0:
-                    raise RuntimeError('recorder failed')
+                if process is not None:
+                    time.sleep(.2)  # Allow final notifications to arrive before stopping reception.
+                    process.terminate()
+                    if process.wait(timeout=10) != 0:
+                        raise RuntimeError('recorder failed')
             finally:
                 for socket in sockets.values():
                     socket.close()
@@ -101,17 +104,20 @@ def run_demo(config_path, duration=10):
                 process.kill()
                 process.wait()
         publisher.close()
+    logger.info('Published {}, skipped {}', counts, skipped)
+    if publish_only:
+        return None
     created = set(config.output_dir.glob('*.mcap')) - before
     if len(created) != 1:
         raise RuntimeError('cannot uniquely identify the new recording')
     path = created.pop()
-    logger.info('Published {}, skipped {}', counts, skipped)
     return path
 
 
 class CLI:
     def parse(self, argv):
         command = click.Command('run_demo', params=[
+            click.Option(['--publish-only'], is_flag=True, help='Publish for ten seconds without launching a recorder.'),
             click.Option(['--config'], required=True, type=click.Path(exists=True, path_type=Path)),
             click.Option(['--version'], is_flag=True, is_eager=True, expose_value=False,
                          callback=self.show_version)])
@@ -131,7 +137,9 @@ class CLI:
 def main(argv=None):
     try:
         args = CLI().parse(sys.argv[1:] if argv is None else argv)
-        click.echo(run_demo(args['config']))
+        path = run_demo(args['config'], publish_only=args['publish_only'])
+        if path is not None:
+            click.echo(path)
         return 0
     except click.exceptions.Exit as exc:
         return exc.exit_code

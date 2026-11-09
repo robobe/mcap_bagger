@@ -130,3 +130,24 @@ def test_summary_table_layout():
     table = [line for line in text.splitlines() if ' | ' in line]
     assert len({len(line) for line in table}) == 1
     assert 'Messages' in SUMMARY['format_summary']('empty.mcap', {})
+
+
+def test_publish_only_never_launches_recorder(tmp_path, monkeypatch):
+    import socket
+    with socket.socket() as a, socket.socket() as b:
+        a.bind(('127.0.0.1', 0))
+        b.bind(('127.0.0.1', 0))
+        ports = [a.getsockname()[1], b.getsockname()[1]]
+    data = yaml.safe_load(Path('config/recorder.yaml').read_text())
+    data['output_dir'] = str(tmp_path / 'recordings')
+    for channel in data['channels']:
+        channel['endpoint'] = f"tcp://127.0.0.1:{ports[0 if channel['shm'] else 1]}"
+    path = tmp_path / 'config.yaml'
+    path.write_text(yaml.safe_dump(data))
+
+    def fail(*args, **kwargs):
+        raise AssertionError('publisher-only mode must not launch a recorder')
+
+    monkeypatch.setattr(DEMO['run_demo'].__globals__['subprocess'], 'Popen', fail)
+    assert DEMO['run_demo'](path, duration=.05, publish_only=True) is None
+    assert not (tmp_path / 'recordings').exists()
