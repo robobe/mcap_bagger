@@ -1,6 +1,7 @@
 """Bounded producer queues and the single owner of an MCAP output stream."""
 import os
 import threading
+import time
 from collections import deque
 from datetime import datetime, timezone
 
@@ -27,9 +28,10 @@ class SharedQueues:
             self.sizes[index] += len(message[2])
             self.condition.notify_all()
 
-    def get_next(self):
+    def get_next(self, timeout=None):
         with self.condition:
-            self.condition.wait_for(lambda: any(self.queues) or self.closed)
+            if not self.condition.wait_for(lambda: any(self.queues) or self.closed, timeout):
+                raise TimeoutError
             if not any(self.queues):
                 return None
             index = self.turn if self.queues[self.turn] else 1 - self.turn
@@ -88,10 +90,26 @@ class McapWriter:
                     channels[channel.topic] = writer.register_channel(channel.topic, '', 0, metadata)
                     counts[channel.topic] = 0
                 self.ready.set()
-                while (message := self.queues.get_next()) is not None:
+                interval = config.sync_interval_s
+                deadline = time.monotonic() + interval
+                dirty = True
+                while True:
+                    if interval and time.monotonic() >= deadline:
+                        if dirty:
+                            writer.flush()
+                            os.fsync(stream.fileno())
+                            dirty = False
+                        deadline = time.monotonic() + interval
+                    try:
+                        message = self.queues.get_next(max(0, deadline - time.monotonic()) if interval else None)
+                    except TimeoutError:
+                        continue
+                    if message is None:
+                        break
                     topic, received, payload = message
                     writer.add_message(channels[topic], received, payload, received, counts[topic] % 2**32)
                     counts[topic] += 1
+                    dirty = True
                 writer.finish()
                 stream.flush()
                 os.fsync(stream.fileno())

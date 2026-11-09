@@ -94,3 +94,31 @@ def test_queue_limits_and_wakeup():
     with pytest.raises(ValueError, match='overflow'):
         queues.put(1, ('image', 1, b'xxx'))
     queues.close()
+
+
+@pytest.mark.parametrize('stage', ['flush', 'fsync'])
+def test_idle_periodic_sync_and_failure(tmp_path, monkeypatch, stage):
+    from dataclasses import replace
+    from mcap_bagger import writer as module
+    called = threading.Event()
+
+    def fail(*args):
+        called.set()
+        raise OSError('sync failed')
+
+    monkeypatch.setattr(module.os if stage == 'fsync' else module.Writer, stage, fail)
+    writer = McapWriter(replace(config(tmp_path), sync_interval_s=.01), SharedQueues())
+    writer.start()
+    assert called.wait(2)
+    assert writer.done.wait(2)
+    with pytest.raises(OSError, match='sync failed'):
+        writer.finish()
+    assert not list(tmp_path.glob('*.mcap'))
+
+
+def test_queue_timeout():
+    queues = SharedQueues()
+    with pytest.raises(TimeoutError):
+        queues.get_next(timeout=.001)
+    queues.close()
+    assert queues.get_next(timeout=.001) is None

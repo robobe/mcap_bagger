@@ -3,9 +3,9 @@
 ## Project Structure & Module Organization
 
 `src/mcap_bagger/` owns configuration, CLI and bounded recording workers.
-`examples/` contains the numbered SHM-image demo and commented profiles; `tests/`
+`config/` contains the example channel configuration; `tests/`
 contains configuration, lifecycle, real TCP/SHM and MCAP readback checks.
-Sibling `bullet_msgs` owns the shared transport contracts and SHM reader.
+The SHM reader is local; no sibling project dependency is required.
 
 The application's main entry point and command selector must be `main.py`.
 It passes `argv` to a helper class in the CLI module and receives structured
@@ -23,8 +23,8 @@ saved plan when its scope or decisions change.
 
 ## Build, Test, and Development Commands
 
-Use Python 3.12 and uv: `uv sync --locked --extra demo`,
-`uv run --locked --extra demo pytest -q`, and `uv run --locked mcap-bagger`.
+Use Python 3.12 and uv: `uv sync --locked`,
+`uv run --locked pytest -q`, and `uv run --locked mcap-bagger`.
 Do not install system tools automatically. Keep uv.lock aligned with pyproject.toml.
 
 ## Coding Style & Naming Conventions

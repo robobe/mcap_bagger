@@ -1,6 +1,7 @@
 """Validate opaque channel configuration and create a registration-only MCAP."""
 
 import os
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -37,12 +38,16 @@ class RegistrationConfig:
     project: str
     output_dir: Path
     channels: tuple[Channel, ...]
+    sync_interval_s: float = 0
 
     @classmethod
     def load(cls, path):
         path = Path(path).resolve()
         data = yaml.safe_load(path.read_text())
-        _fields(data, ('project', 'output_dir', 'channels'))
+        _fields(data, ('project', 'output_dir', 'channels'), ('sync_interval_s',))
+        interval = data.get('sync_interval_s', 0)
+        if type(interval) not in (int, float) or not math.isfinite(interval) or interval < 0:
+            raise ValueError('sync_interval_s must be a finite nonnegative number')
         if not isinstance(data['project'], str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}', data['project']):
             raise ValueError('project must be 1–64 letters, digits, underscores, or hyphens')
         if not isinstance(data['output_dir'], str) or not data['output_dir'].strip():
@@ -68,7 +73,7 @@ class RegistrationConfig:
             if item['shm'] and compress not in ('raw', 'jpeg'):
                 raise ValueError('compress must be raw or jpeg')
             channels.append(Channel(topic, item['endpoint'], item['shm'], compress))
-        return cls(data['project'], (path.parent / data['output_dir']).resolve(), tuple(channels))
+        return cls(data['project'], (path.parent / data['output_dir']).resolve(), tuple(channels), interval)
 
 
 def register_channels(config):

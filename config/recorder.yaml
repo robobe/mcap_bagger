@@ -1,5 +1,6 @@
 project: image_imu
 output_dir: ../recordings
+sync_interval_s: 1.0  # 0 disables periodic sync
 channels:
   - topic: camera/front/image
     endpoint: tcp://127.0.0.1:5556

@@ -97,3 +97,25 @@ def test_registration_failure_keeps_partial_file(tmp_path, monkeypatch):
         register_channels(RegistrationConfig.load(path))
     assert not list((tmp_path / 'output').glob('*.mcap'))
     assert len(list((tmp_path / 'output').glob('*.partial'))) == 1
+
+
+@pytest.mark.parametrize('interval', [-1, True, '1', float('inf'), float('nan'), None])
+def test_invalid_sync_interval(tmp_path, interval):
+    data = yaml.safe_load(Path('config/recorder.yaml').read_text())
+    data['sync_interval_s'] = interval
+    path = tmp_path / 'config.yaml'
+    path.write_text(yaml.safe_dump(data))
+    with pytest.raises(ValueError, match='sync_interval_s'):
+        RegistrationConfig.load(path)
+
+
+@pytest.mark.parametrize('value', [0, .5, 'omitted'])
+def test_sync_interval_default_and_positive(tmp_path, value):
+    data = yaml.safe_load(Path('config/recorder.yaml').read_text())
+    if value == 'omitted':
+        data.pop('sync_interval_s')
+    else:
+        data['sync_interval_s'] = value
+    path = tmp_path / 'config.yaml'
+    path.write_text(yaml.safe_dump(data))
+    assert RegistrationConfig.load(path).sync_interval_s == (0 if value == 'omitted' else value)

@@ -1,7 +1,6 @@
 """Click argument parsing, independent of application execution."""
 
 from dataclasses import dataclass
-from pathlib import Path
 
 import click
 
@@ -11,8 +10,6 @@ class CommandData:
     action: str
     subcommand: str | None
     config: str | None
-    ready_file: Path | None
-    output_dir: str | None
 
 
 class CLI:
@@ -21,30 +18,15 @@ class CLI:
     def parse(self, argv):
         command = click.Command(
             "mcap-bagger",
-            help="Manual command loop or simulation-controlled recorder service.",
+            help="Record opaque ZeroMQ and SHM channels.",
             params=[
-                click.Argument(["subcommand"], type=click.Choice(["version", "run"]), required=False),
-                click.Option(["--config"], help="Load YAML and wait for simulation runs."),
-                click.Option(["--ready-file"], type=click.Path(path_type=Path),
-                             help="Write readiness marker after control subscriptions are installed."),
-                click.Option(["--output-dir"],
-                             help="MCAP directory override; requires --config, relative to the working directory."),
+                click.Argument(["subcommand"], type=click.Choice(["version", "run"]), required=True),
+                click.Option(["--config"], help="Load channel declarations from YAML."),
             ],
         )
         with command.make_context("mcap-bagger", list(argv)) as context:
             values = context.params
             if values["subcommand"] == "run" and not values["config"]:
                 raise click.UsageError("run requires --config", context)
-            if values["subcommand"] == "run" and (values["ready_file"] is not None or values["output_dir"] is not None):
-                raise click.UsageError("run uses output_dir from YAML and does not support --ready-file", context)
-            if values["subcommand"] != "version" and values["output_dir"] is not None and not values["config"]:
-                raise click.UsageError("--output-dir requires --config", context)
-            if values["subcommand"] == "version":
-                action = "version"
-            elif values["subcommand"] == "run":
-                action = "run"
-            elif values["config"]:
-                action = "record"
-            else:
-                action = "interactive"
+            action = values["subcommand"]
             return CommandData(action=action, **values)

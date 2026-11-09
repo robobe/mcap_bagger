@@ -51,3 +51,10 @@ input wakes the writer, which drains accepted entries and finalizes the file.
 Producer errors retain a finalized partial file. A writer error closes queue
 input and the stream without retrying or attempting an MCAP footer; Pipeline
 then stops producers. Completion and readiness events also fire on failure.
+
+## Periodic disk sync
+
+Optional `sync_interval_s` defaults to zero. Positive intervals use monotonic
+writer deadlines and timed queue waits. Dirty MCAP chunks are flushed and the
+file is fsynced even when no new messages arrive. Clean intervals do no disk
+work. Final shutdown always syncs, and sync failures retain a partial file.
