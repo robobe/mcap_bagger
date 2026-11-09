@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from mcap_bagger import cli
+from mcap_bagger import main as app
 from mcap_bagger.config import Config
 from mcap_bagger.recorder import Recorder
 
@@ -39,9 +39,9 @@ def test_invalid_override_rejected(config_files,value):
 
 def test_directory_is_created_and_probe_is_cleaned(tmp_path):
     output=tmp_path/'new/recordings'
-    cli._prepare_output_directory(output)
+    app._prepare_output_directory(output)
     assert output.is_dir() and list(output.iterdir())==[]
-    cli._prepare_output_directory(output)
+    app._prepare_output_directory(output)
     assert list(output.iterdir())==[]
 
 
@@ -49,7 +49,7 @@ def test_existing_file_is_not_a_directory(tmp_path):
     output=tmp_path/'file'
     output.write_text('keep')
     with pytest.raises(ValueError,match=str(output)):
-        cli._prepare_output_directory(output)
+        app._prepare_output_directory(output)
     assert output.read_text()=='keep'
 
 
@@ -58,9 +58,9 @@ def test_permission_or_write_error_aborts_before_readiness(config_files,tmp_path
     output=tmp_path/'blocked'
     ready=tmp_path/'ready'
     controlled=Mock()
-    monkeypatch.setattr(cli,'ControlledRecorder',controlled)
+    monkeypatch.setattr(app,'ControlledRecorder',controlled)
     monkeypatch.setattr('sys.argv',['mcap-bagger','--config',str(config_files[0]),'--output-dir',str(output),'--ready-file',str(ready)])
-    real_probe=cli.NamedTemporaryFile
+    real_probe=app.NamedTemporaryFile
     if failure=='create':
         def probe(**kwargs):
             raise PermissionError('denied')
@@ -72,8 +72,8 @@ def test_permission_or_write_error_aborts_before_readiness(config_files,tmp_path
                     def write(self,data):
                         raise OSError('disk full')
                 yield BrokenWrite()
-    monkeypatch.setattr(cli,'NamedTemporaryFile',probe)
-    assert cli.main()==1
+    monkeypatch.setattr(app,'NamedTemporaryFile',probe)
+    assert app.main()==1
     controlled.assert_not_called()
     assert not ready.exists()
     assert list(output.iterdir())==[]
@@ -83,7 +83,7 @@ def test_permission_or_write_error_aborts_before_readiness(config_files,tmp_path
 def test_override_requires_controlled_config(monkeypatch):
     monkeypatch.setattr('sys.argv',['mcap-bagger','--output-dir','somewhere'])
     with pytest.raises(SystemExit) as result:
-        cli.main()
+        app.main()
     assert result.value.code==2
 
 
@@ -108,7 +108,7 @@ def test_two_controlled_episodes_use_custom_directory(config_files,tmp_path):
         images.setsockopt(zmq.XPUB_VERBOSE,1)
         telemetry.bind(original.transport['telemetry_endpoint'])
         images.bind(original.transport['image_endpoint'])
-        process=subprocess.Popen([sys.executable,'-u','-m','mcap_bagger.cli','--config',str(profile),
+        process=subprocess.Popen([sys.executable,'-u','-m','mcap_bagger.main','--config',str(profile),
                                   '--output-dir',str(output),'--ready-file',str(ready)],
                                  stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         def until(predicate,action=lambda:None):

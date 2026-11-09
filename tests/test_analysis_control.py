@@ -43,7 +43,7 @@ def test_cli_readiness_marker_and_signal_cleanup(config_files,tmp_path):
     import sys
     import time
     marker=tmp_path/'recorder.ready'
-    process=subprocess.Popen([sys.executable,'-m','mcap_bagger.cli','--config',str(config_files[0]),'--ready-file',str(marker)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+    process=subprocess.Popen([sys.executable,'-m','mcap_bagger.main','--config',str(config_files[0]),'--ready-file',str(marker)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
     try:
         deadline=time.monotonic()+5
         while not marker.exists():

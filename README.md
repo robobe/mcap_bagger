@@ -21,6 +21,13 @@ At the prompt, run `init ../bullet_render/configs/recorder.yaml`, then `start`.
 Use `close` to drain, finalize and print counters, and `quit` to finish. Stop/start creates separate files;
 initialization cannot change during a recording.
 
+Run `uv run --locked mcap-bagger version` to print the installed application
+version and exit without starting a recording.
+
+The console command enters through `mcap_bagger/main.py`; it can also be run
+with `python -m mcap_bagger.main`. The CLI helper parses arguments with Click
+and returns command data to `main.py`, which selects the application operation.
+
 For automatic simulation recording, run:
 
 ```bash
