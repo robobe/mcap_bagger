@@ -67,3 +67,13 @@ This directory has no Git history from which to infer commit conventions. Use sh
 ## Data & Configuration
 
 Keep credentials, machine-specific settings, generated output, and large recordings out of version control. Provide sanitized configuration examples and add appropriate ignore rules when introducing generated files.
+
+## README Maintenance
+
+Use the project-local `$maintain-readme` skill at
+`.agents/skills/maintain-readme/SKILL.md` when requested and after changes to
+versions, features/removals, CLI/API/config behavior, installation/dependencies,
+architecture, or build/test workflows. Run it after implementation and validation,
+before reporting completion. Skip internal refactors without documentation impact;
+an accurate README needs no edit. These are Codex workflow triggers, not background
+listeners for changes made outside Codex.

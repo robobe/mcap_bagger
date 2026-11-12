@@ -1,12 +1,71 @@
 # MCAP Bagger
 
 Standalone recording of opaque ZeroMQ payloads and shared-memory images.
-Requires Python 3.12 and uv. No sibling project packages are required.
+
+## Overview
+
+MCAP Bagger records local publisher streams into MCAP files for later inspection.
+It is intended for developers collecting telemetry and camera data. No sibling
+project packages are required.
+
+## Features
+
+- Record opaque messages and raw or JPEG shared-memory images.
+- Control recordings through a web server with downloads and deletion controls.
+- Publish demo streams, summarize recordings, and preview files in a desktop player.
+
+## Architecture
+
+`main.py` selects application operations from structured arguments parsed by
+`cli.py`. The pipeline receives messages and images, and the writer stores MCAP.
+The server owns recording lifecycle controls; the desktop player reads files.
+
+```mermaid
+flowchart LR
+    A[ZeroMQ messages and SHM images] --> B[Receiver threads]
+    B --> C[Bounded queues]
+    C --> D[MCAP writer]
+    D --> E[Recording files]
+```
+
+Message and image threads feed independent queues, each limited to 64 MiB and
+4,096 entries. One writer alternates between queues. Overflow stops the run.
+Ctrl+C or SIGTERM stops producers and drains accepted entries before finalizing.
+Failures retain `.mcap.partial`; successful files use `.mcap` without overwrite.
+
+Optional `sync_interval_s` defaults to 0 (disabled). A positive value periodically
+finishes buffered MCAP chunks and fsyncs dirty data, even during idle traffic.
+The sample uses 1 second. Shutdown always syncs. Sync failures stop recording.
+Periodic syncing reduces unsynced data loss but does not guarantee a finalized
+MCAP after a crash. Disk stalls can increase queue pressure. JPEG is lossy.
+
+## Requirements
+
+**Software**
+
+- Python 3.12+ and uv; the development workflow uses Python 3.12.
+- Dependencies declared in `pyproject.toml`, installed by uv.
+- A desktop display and Tkinter for the optional player. Install missing Tkinter
+  manually; the Ubuntu package is `python3-tk`.
+
+**Hardware**
+
+No specific board or sensor is required for the synthetic demo.
+
+## Installation
+
+```bash
+git clone https://github.com/robobe/mcap_bagger.git
+cd mcap_bagger
+uv sync --locked
+```
 
 Build the wheel with `uv build --wheel --out-dir dist` or the VS Code **Build wheel** task.
 The result is in `dist/` and includes the web UI (`mcap_bagger/web.html`) and
 example configuration (`mcap_bagger/config/recorder.yaml`). Copy the packaged
 configuration to a writable location before editing it or recording.
+
+## Quick Start
 
 Print the default YAML with `mcap-bagger default-config`, or save it using shell
 redirection:
@@ -25,31 +84,17 @@ uv run --locked mcap-bagger run --config config/recorder.yaml
 uv run --locked pytest -q
 ```
 
-YAML declares a project, output directory, and channels with `topic`, `endpoint`,
-and boolean `shm`. Endpoints use loopback TCP. Output paths are relative to YAML.
-Ordinary messages contain two ZeroMQ frames (topic and payload); payload bytes
-are preserved, including binary and empty data. Image notifications use the
-existing local SHM descriptor/header protocol. `compress: raw` preserves pixels;
-`compress: jpeg` encodes JPEG at quality 90. The publisher supplies `camera_info`
-as an ordinary opaque channel. No companion metadata channel is generated.
+With publishers running, the recorder writes into the configured output directory.
+Stop with Ctrl+C to drain accepted data and finalize the recording.
 
-Message and image threads feed independent queues, each limited to 64 MiB and
-4,096 entries. One writer alternates between queues. Overflow stops the run.
-Ctrl+C or SIGTERM stops producers and drains accepted entries before finalizing.
-Failures retain `.mcap.partial`; successful files use `.mcap` without overwrite.
-
-Optional `sync_interval_s` defaults to 0 (disabled). A positive value periodically
-finishes buffered MCAP chunks and fsyncs dirty data, even during idle traffic.
-The sample uses 1 second. Shutdown always syncs. Sync failures stop recording.
-Periodic syncing reduces unsynced data loss but does not guarantee a finalized
-MCAP after a crash. Disk stalls can increase queue pressure. JPEG is lossy.
+## Usage
 
 The old interactive CLI, implicit simulation mode, legacy YAML, flight report,
 and legacy output/readiness options have been retired. Use `run --config` and
 set output location in YAML. `register_channels` remains a Python helper for
 creating registration-only files. Automated tests cover the standalone pipeline.
 
-## Ten-second publishing example
+### Ten-second publishing example
 
 ```bash
 uv run --locked python examples/run_demo.py --config config/recorder.yaml
@@ -65,7 +110,7 @@ The summary counts all configured channels and computes observed rates from
 MCAP receive timestamps using (count-1)/(last-first). Single-message and empty
 channels show N/A. Both scripts accept `version` and `--help`.
 
-## Recording server
+### Recording server
 
 ```bash
 uv run --locked mcap-bagger server --config config/recorder.yaml --host 0.0.0.0 --port 9090
@@ -100,7 +145,7 @@ uv run --locked python examples/run_demo.py --config config/recorder.yaml --publ
 Publication starts immediately and lasts ten seconds, even with no subscribers.
 The script does not start or stop an independently running recorder.
 
-## Desktop test player
+### Desktop test player
 
 Run `uv run --locked mcap-bagger player`. Load a finalized MCAP using the native
 file picker. Start plays at recorded speed; Stop pauses; Step advances to the
@@ -110,3 +155,81 @@ encountered camera_info with width, height, step, and rgb8/bgr8 encoding.
 Ordinary payloads appear as JSON, text, or hex, truncated at 16 KiB per topic.
 This is a simple test viewer with no seeking or editing. Tkinter must be installed
 manually if absent (Ubuntu package: `python3-tk`); a desktop display is required.
+
+## Configuration
+
+YAML declares a project, output directory, and channels with `topic`, `endpoint`,
+and boolean `shm`. Endpoints use loopback TCP. Output paths are relative to YAML.
+Ordinary messages contain two ZeroMQ frames (topic and payload); payload bytes
+are preserved, including binary and empty data. Image notifications use the
+existing local SHM descriptor/header protocol. `compress: raw` preserves pixels;
+`compress: jpeg` encodes JPEG at quality 90. The publisher supplies `camera_info`
+as an ordinary opaque channel. No companion metadata channel is generated.
+
+See [the example configuration](config/recorder.yaml). `sync_interval_s` defaults
+to 0 (disabled); the example sets 1 second. Configure project and output location
+in YAML before starting a recording.
+
+## Project Structure
+
+```text
+mcap_bagger/
+├── src/mcap_bagger/  # CLI, pipeline, writer, server, and player
+├── tests/           # Automated checks
+├── config/          # Example recorder configuration
+├── docs/plans/      # Implementation plans
+├── examples/        # Publishers and MCAP summary
+└── README.md
+```
+
+## Development
+
+Use Python 3.12 and `uv sync --locked`. Build with `uv build --wheel --out-dir dist`.
+VS Code tasks cover building, recording, publishing, summaries, and the player.
+No formatter, linter, or debugger configuration is specified.
+
+## Testing
+
+```bash
+uv run --locked pytest -q
+```
+
+Tests cover configuration, CLI, lifecycle, transports, MCAP readback, server,
+examples, and player behavior.
+
+## Documentation
+
+- [Repository guidelines](AGENTS.md)
+- [Implementation plans](docs/plans/)
+- The running recording server exposes API documentation at `/docs`.
+
+## Troubleshooting
+
+### Busy publisher endpoints
+
+The demo fails when configured endpoints are busy. Stop the conflicting publisher
+or select unused loopback endpoints in the configuration.
+
+### Missing desktop support
+
+The player requires a desktop display and Tkinter. Install Tkinter manually if
+missing; on Ubuntu the package is `python3-tk`.
+
+### Partial recordings
+
+Failures retain `.mcap.partial` files. These may require MCAP recovery tools;
+periodic syncing does not guarantee a finalized recording after a crash.
+
+## Roadmap
+
+Future commitments are unspecified.
+
+## Contributing
+
+Report issues and propose changes through the repository's GitHub project.
+Keep changes focused, use short imperative commit subjects, and describe the
+problem, changes, and validation in pull requests, including checks not run.
+
+## License
+
+A project license is unspecified; no LICENSE file is currently provided.
