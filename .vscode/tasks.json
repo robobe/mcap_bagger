@@ -2,79 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Build wheel",
-      "type": "process",
-      "command": "uv",
-      "args": ["build", "--wheel", "--out-dir", "dist"],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "MCAP desktop player",
-      "type": "process",
-      "command": "uv",
-      "args": ["run", "--locked", "mcap-bagger", "player"],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "Publish only (10 seconds)",
-      "type": "process",
-      "command": "uv",
-      "args": [
-        "run",
-        "--locked",
-        "python",
-        "examples/run_demo.py",
-        "--config",
-        "config/recorder.yaml",
-        "--publish-only"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "Record example (10 seconds)",
-      "type": "process",
-      "command": "uv",
-      "args": [
-        "run",
-        "--locked",
-        "python",
-        "examples/run_demo.py",
-        "--config",
-        "config/recorder.yaml"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "Read MCAP summary",
-      "type": "process",
-      "command": "uv",
-      "args": [
-        "run",
-        "--locked",
-        "python",
-        "examples/summarize_mcap.py",
-        "${input:mcapPath}"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "Recording server",
+      "label": "Web server",
       "type": "process",
       "command": "uv",
       "args": [
@@ -92,14 +20,52 @@
       "options": {
         "cwd": "${workspaceFolder}"
       },
+      "problemMatcher": [],
+      "icon": {
+        "id": "play",
+        "color": "terminal.ansiGreen"
+      }
+    },
+    {
+      "label": "Tests",
+      "type": "shell",
+      "command": "${input:testCommand}",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/bash",
+          "args": [
+            "-c"
+          ]
+        }
+      },
+      "group": "test",
       "problemMatcher": []
     }
   ],
   "inputs": [
     {
-      "id": "mcapPath",
-      "type": "promptString",
-      "description": "MCAP file path (absolute or relative to the project folder)"
+      "id": "testCommand",
+      "type": "pickString",
+      "description": "Select a test tool",
+      "options": [
+        {
+          "label": "Desktop player",
+          "value": "uv run --locked mcap-bagger player"
+        },
+        {
+          "label": "Publish streams (10 seconds)",
+          "value": "uv run --locked python examples/run_demo.py --config config/recorder.yaml --publish-only"
+        },
+        {
+          "label": "Record demo (10 seconds)",
+          "value": "uv run --locked python examples/run_demo.py --config config/recorder.yaml"
+        },
+        {
+          "label": "MCAP summary",
+          "value": "read -r -p \"MCAP file path: \" mcap_path && uv run --locked python examples/summarize_mcap.py \"$mcap_path\""
+        }
+      ]
     }
   ]
 }

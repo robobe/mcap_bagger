@@ -60,7 +60,7 @@ cd mcap_bagger
 uv sync --locked
 ```
 
-Build the wheel with `uv build --wheel --out-dir dist` or the VS Code **Build wheel** task.
+Build the wheel with `uv build --wheel --out-dir dist`.
 The result is in `dist/` and includes the web UI (`mcap_bagger/web.html`) and
 example configuration (`mcap_bagger/config/recorder.yaml`). Copy the packaged
 configuration to a writable location before editing it or recording.
@@ -128,7 +128,7 @@ lists completed and partial recordings and supports downloads, individual Delete
 and Clear all inactive, with deletion confirmation. Active files are protected.
 Partial downloads may require MCAP recovery tools. All operations stay inside
 the configured output directory and reject symlinks. Server shutdown stops and
-finalizes any active session. A VS Code “Recording server” task is included.
+finalizes any active session. A VS Code “▶ Web server” task is included.
 
 The API exposes `/api/status`, `/api/recordings`, POST
 `/api/recordings/start` with `{"filename":"test_run"}`, POST
@@ -185,7 +185,11 @@ mcap_bagger/
 ## Development
 
 Use Python 3.12 and `uv sync --locked`. Build with `uv build --wheel --out-dir dist`.
-VS Code tasks cover building, recording, publishing, summaries, and the player.
+Use **Terminal → Run Task** in VS Code. Choose **▶ Web server** to run the recording server.
+The **Tests** task opens a selection menu for demo publishing, demo recording,
+MCAP summaries, or the desktop player. Selecting MCAP summary prompts for its
+file path in the terminal; enter it without surrounding quotes. The task is
+also available through VS Code’s test task group.
 No formatter, linter, or debugger configuration is specified.
 
 ## Testing
