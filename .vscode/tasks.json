@@ -27,6 +27,25 @@
       }
     },
     {
+      "label": "MCAP player",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "--locked",
+        "mcap-bagger",
+        "player"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "icon": {
+        "id": "debug",
+        "color": "terminal.ansiBlue"
+      }
+    },
+    {
       "label": "Tests",
       "type": "shell",
       "command": "${input:testCommand}",

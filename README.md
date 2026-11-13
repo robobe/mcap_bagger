@@ -128,7 +128,7 @@ lists completed and partial recordings and supports downloads, individual Delete
 and Clear all inactive, with deletion confirmation. Active files are protected.
 Partial downloads may require MCAP recovery tools. All operations stay inside
 the configured output directory and reject symlinks. Server shutdown stops and
-finalizes any active session. A VS Code “▶ Web server” task is included.
+finalizes any active session. A VS Code “Web server” task is included.
 
 The API exposes `/api/status`, `/api/recordings`, POST
 `/api/recordings/start` with `{"filename":"test_run"}`, POST
@@ -185,7 +185,9 @@ mcap_bagger/
 ## Development
 
 Use Python 3.12 and `uv sync --locked`. Build with `uv build --wheel --out-dir dist`.
-Use **Terminal → Run Task** in VS Code. Choose **▶ Web server** to run the recording server.
+Use **Terminal → Run Task** in VS Code. Choose **Web server** to run the recording server.
+Choose **MCAP player** (debug icon) to launch `uv run --locked mcap-bagger player`.
+The icon identifies the task; it does not attach a debugger.
 The **Tests** task opens a selection menu for demo publishing, demo recording,
 MCAP summaries, or the desktop player. Selecting MCAP summary prompts for its
 file path in the terminal; enter it without surrounding quotes. The task is
