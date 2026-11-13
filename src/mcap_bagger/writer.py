@@ -109,8 +109,9 @@ class McapWriter:
                         continue
                     if message is None:
                         break
-                    topic, received, payload = message
-                    writer.add_message(channels[topic], received, payload, received, counts[topic] % 2**32)
+                    topic, received, payload = message[:3]
+                    published, sequence = message[3:] if len(message) == 5 else (received, counts[topic] % 2**32)
+                    writer.add_message(channels[topic], received, payload, published, sequence)
                     counts[topic] += 1
                     dirty = True
                 writer.finish()

@@ -84,7 +84,9 @@ def run_demo(config_path, duration=10, publish_only=False):
                                 payload.update(acceleration_m_s2=[0, 0, 9.81], angular_velocity_rad_s=[0, 0, .1])
                             else:
                                 payload.update(width=640, height=480, encoding='rgb8', step=1920, frame_id='front_camera')
-                            sockets[channels[topic].endpoint].send_multipart([topic.encode(), json.dumps(payload).encode()])
+                            header = dict(publish_time_ns=payload['timestamp_ns'], sequence=tick % 2**32)
+                            sockets[channels[topic].endpoint].send_multipart(
+                                [topic.encode(), json.dumps(header).encode(), json.dumps(payload).encode()])
                         counts[topic] += 1
                     time.sleep(.001)
                 if process is not None:

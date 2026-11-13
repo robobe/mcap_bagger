@@ -1,0 +1,3 @@
+# ZMQ message headers
+
+Detect ordinary two-frame legacy messages and three-frame topic/JSON-header/payload messages. Validate integer uint64 publish_time_ns and uint32 sequence, rejecting malformed JSON, duplicate keys and nonstandard constants. Ignore extra fields. Preserve payload bytes; map header fields to MCAP and receive time to log_time. Keep legacy counters advancing for all messages. Extend queue entries only for header-bearing traffic. Leave SHM unchanged. Update ordinary demo publishing, README and serialization TODO. Test parser boundaries, TCP readback, mixed framing, failures and existing SHM behavior. Run locked pytest.

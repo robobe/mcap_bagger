@@ -1,5 +1,6 @@
 """Independent message/image producers and a single MCAP file owner."""
 import io
+import json
 import threading
 import time
 
@@ -13,6 +14,29 @@ from .shm import FrameReader, topic_prefix, MAX_MESSAGE_BYTES
 
 QUEUE_BYTES = 64 * 1024 * 1024
 QUEUE_ENTRIES = 4096
+
+
+def parse_message_header(raw):
+    def unique_fields(pairs):
+        fields = {}
+        for key, value in pairs:
+            if key in fields:
+                raise ValueError('duplicate message header key')
+            fields[key] = value
+        return fields
+
+    def reject_constant(value):
+        raise ValueError('invalid JSON constant in message header')
+
+    header = json.loads(raw.decode('utf-8'), object_pairs_hook=unique_fields,
+                        parse_constant=reject_constant)
+    if not isinstance(header, dict):
+        raise ValueError('message header must be an object')
+    for key, limit in (('publish_time_ns', 2**64), ('sequence', 2**32)):
+        value = header.get(key)
+        if type(value) is not int or not 0 <= value < limit:
+            raise ValueError(f'invalid message header {key}')
+    return header['publish_time_ns'], header['sequence']
 
 
 class Pipeline:
@@ -71,7 +95,7 @@ class Pipeline:
                         for socket, _ in poller.poll(50):
                             parts = socket.recv_multipart()
                             received = time.time_ns()
-                            if len(parts) != (1 if index else 2):
+                            if (index and len(parts) != 1) or (not index and len(parts) not in (2, 3)):
                                 raise ValueError('invalid ZeroMQ message framing')
                             key = parts[0].split(b'\0', 1)[0] if index else parts[0]
                             channel = routes[socket].get(key)
@@ -90,8 +114,11 @@ class Pipeline:
                                         image.save(buffer, format='JPEG', quality=90)
                                         payload = buffer.getvalue()
                             else:
-                                payload = parts[1]
-                            self.enqueue(index, (channel.topic, received, payload))
+                                payload = parts[-1]
+                            item = (channel.topic, received, payload)
+                            if not index and len(parts) == 3:
+                                item += parse_message_header(parts[1])
+                            self.enqueue(index, item)
                 finally:
                     for socket in sockets:
                         socket.close()

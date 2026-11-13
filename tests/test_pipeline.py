@@ -113,3 +113,69 @@ def test_shm_image_handler(tmp_path, compress):
                 thread.join(3)
     finally:
         path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize('raw', [b'{}', b'[]', b'null', b'bad', b'\xff',
+    b'{"publish_time_ns":true,"sequence":0}',
+    b'{"publish_time_ns":0,"sequence":-1}',
+    b'{"publish_time_ns":18446744073709551616,"sequence":0}',
+    b'{"publish_time_ns":0,"sequence":4294967296}',
+    b'{"publish_time_ns":0,"sequence":0,"sequence":1}',
+    b'{"publish_time_ns":0,"sequence":0,"extra":NaN}'])
+def test_invalid_message_headers(raw):
+    from mcap_bagger.pipeline import parse_message_header
+    with pytest.raises(ValueError):
+        parse_message_header(raw)
+
+
+def test_message_header_boundaries():
+    from mcap_bagger.pipeline import parse_message_header
+    assert parse_message_header(b'{"publish_time_ns":0,"sequence":0,"extra":1}') == (0, 0)
+    assert parse_message_header(b'{"publish_time_ns":18446744073709551615,"sequence":4294967295}') == (2**64-1, 2**32-1)
+
+
+def test_tcp_headers_and_legacy_readback(tmp_path):
+    with zmq.Context() as context, context.socket(zmq.XPUB) as publisher:
+        port = publisher.bind_to_random_port('tcp://127.0.0.1')
+        pipeline = Pipeline(RegistrationConfig('test', tmp_path, (
+            Channel('imu', f'tcp://127.0.0.1:{port}', False),)))
+        thread = threading.Thread(target=pipeline.receive, args=(0,))
+        thread.start()
+        try:
+            assert publisher.poll(3000)
+            publisher.recv()
+            for sequence, payload in [(42, b'\x00binary'), (0, b'')]:
+                publisher.send_multipart([b'imu', ('{"publish_time_ns":1,"sequence":%d}' % sequence).encode(), payload])
+            publisher.send_multipart([b'imu', b'legacy'])
+            with pipeline.condition:
+                assert pipeline.condition.wait_for(lambda: len(pipeline.queues[0]) == 3, timeout=3)
+        finally:
+            pipeline.stop.set()
+            thread.join(3)
+        assert pipeline.error is None
+        pipeline.write()
+        with pipeline.writer.path.open('rb') as stream:
+            records = list(make_reader(stream).iter_messages(log_time_order=False))
+        assert [m.data for _, _, m in records] == [b'\x00binary', b'', b'legacy']
+        assert [m.sequence for _, _, m in records] == [42, 0, 2]
+        assert [m.publish_time for _, _, m in records[:2]] == [1, 1]
+        assert all(m.log_time > 1 for _, _, m in records)
+
+
+@pytest.mark.parametrize('parts', [[b'imu', b'{}', b'payload'], [b'imu', b'a', b'b', b'c']])
+def test_invalid_tcp_header_or_framing_retains_partial(tmp_path, parts):
+    with zmq.Context() as context, context.socket(zmq.XPUB) as publisher:
+        port = publisher.bind_to_random_port('tcp://127.0.0.1')
+        pipeline = Pipeline(RegistrationConfig('test', tmp_path, (
+            Channel('imu', f'tcp://127.0.0.1:{port}', False),)))
+        pipeline.start()
+        try:
+            assert publisher.poll(3000)
+            publisher.recv()
+            publisher.send_multipart(parts)
+            assert pipeline.done.wait(3)
+        finally:
+            with pytest.raises(ValueError):
+                pipeline.finish()
+        assert not list(tmp_path.glob('*.mcap'))
+        assert list(tmp_path.glob('*.mcap.partial'))

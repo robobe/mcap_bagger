@@ -160,7 +160,15 @@ manually if absent (Ubuntu package: `python3-tk`); a desktop display is required
 
 YAML declares a project, output directory, and channels with `topic`, `endpoint`,
 and boolean `shm`. Endpoints use loopback TCP. Output paths are relative to YAML.
-Ordinary messages contain two ZeroMQ frames (topic and payload); payload bytes
+Ordinary messages accept `[topic, payload]` or `[topic, JSON header, payload]`.
+The UTF-8 header requires integer `publish_time_ns` (Unix nanoseconds, uint64)
+and `sequence` (uint32); extra fields are ignored. Publisher fields populate MCAP
+publication time and sequence, while log time remains recorder receive time.
+Legacy messages use receive time and a per-topic recorder counter, advanced for
+every recorded message. Invalid headers or framing stop recording and retain a
+partial file. Duplicate JSON keys and nonstandard constants are rejected.
+Cross-machine latency requires synchronized clocks. SHM behavior is unchanged.
+Payload bytes
 are preserved, including binary and empty data. Image notifications use the
 existing local SHM descriptor/header protocol. `compress: raw` preserves pixels;
 `compress: jpeg` encodes JPEG at quality 90. The publisher supplies `camera_info`
